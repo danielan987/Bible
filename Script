@@ -1,0 +1,42 @@
+# Import packages
+import numpy as np
+import pandas as pd
+from gensim.models import Doc2Vec
+from gensim.models.doc2vec import TaggedDocument
+from sklearn.metrics.pairwise import cosine_similarity
+
+
+# Import data
+df = pd.read_csv('VS_Code_whatweareusing.csv', header=None)
+
+# Specify the column names
+column_names = ['verseID', 'canon_order', 'book', 'chapter', 'startVerse', 'endVerse', 'text']
+df.columns = column_names
+
+# Data cleaning
+# Group by the 'Group' column and combine 'Text' values without sorting
+df = df.groupby('book', sort=False)['text'].agg(lambda x: ''.join(x)).reset_index()
+
+# Filter data
+df = df[~df['book'].isin(["TOB", "JDT", "ESG", "WIS", "SIR", "BAR", "1MA", "2MA", "1ES", "MAN", "PS2", "3MA", "2ES", "4MA", "DAG"])]
+
+# Add index to the strings
+df['book'] = df.index.astype(str) + ': ' + df['book']
+
+df['text'] = df['text'].str.rstrip()
+
+# Tokenization
+tagged_data = [TaggedDocument(words=doc.split(), tags=[str(tag)]) for doc, tag in zip(df['text'], df['book'])]
+
+# Doc2Vec model
+model = Doc2Vec(vector_size=100, window=10, min_count=1, dm=1, dm_concat=1, epochs=10)
+model.build_vocab(tagged_data)
+model.train(tagged_data, total_examples=model.corpus_count, epochs=model.epochs)
+
+# Cosine similarity matrix
+similarity_matrix = cosine_similarity([model.dv[str(i)] for i in df['book']])
+similarity_df = pd.DataFrame(similarity_matrix, columns=df['book'], index=df['book'])
+similarity_df = similarity_df.reset_index()
+
+# Reshape df
+new_df = pd.melt(similarity_df, id_vars='book', var_name='Column', value_name='Value')
